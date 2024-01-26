@@ -1,0 +1,5 @@
+{
+    "jobs_short_desc": "div.jobs-unified-top-card__content--two-pane",
+    "left_side_job_search_links": "div>div>a.job-card-container__link",
+    "max_page_button_li": "li.artdeco-pagination__indicator:last-child",
+}

@@ -1,0 +1,42 @@
+{
+    "manifest_version": 2,
+    "name": "SnifferEx",
+    "version": "1.0",
+    "description": "SnifferEx is an extension that sniffs out various LinkedIn data on need. It's continuously evolving.",
+    "browser_action": {
+        "default_popup": "index.html",
+        "browser_style": true
+    },
+    "icons": {
+        "32": "icons/nose_32.png",
+        "48": "icons/nose_48.png",
+        "64": "icons/nose_64.png"
+    },
+    "permissions": [
+        "*://localhost/*",
+        "webRequest",
+        "activeTab",
+        "tabs",
+        "storage"
+    ],
+    "content_scripts": [
+        {
+            "matches": [
+                "<all_urls>"
+            ]
+        }
+    ],
+    "commands": {
+        "_execute_browser_action": {
+            "suggested_key": {
+                "default": "Alt+Shift+L"
+            }
+        },
+        "start-listening": {
+            "suggested_key": {
+                "default": "Alt+L"
+            }
+        }
+    },
+    "content_security_policy": "script-src 'self' https://cdn.jsdelivr.net"
+}
