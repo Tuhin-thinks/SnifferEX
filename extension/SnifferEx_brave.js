@@ -152,17 +152,27 @@ const injectJS = async ({ operation, selector, attribute, data }) => {
                 });
                 break;
 
-            case "executeScript":
-                // For custom scripts, we need to eval them (be careful with security)
-                const customFunction = new Function(
-                    "attribute",
-                    "selector",
-                    data.script
-                );
-                resultArray = await chrome.scripting.executeScript({
-                    target: { tabId: tabId },
-                    func: customFunction,
-                    args: [attribute, selector],
+            case "scrollDown":
+                await chrome.scripting.executeScript({
+                    target: { tabId },
+                    func: (amount) => {
+                        const el = document.scrollingElement || document.documentElement || document.body;
+                        el.scrollBy(0, amount);
+                    },
+                    args: [data.amount ?? 300],
+                });
+                break;
+
+            case "clickElement":
+                await chrome.scripting.executeScript({
+                    target: { tabId },
+                    func: (selector) => {
+                        const element = document.querySelector(selector);
+                        if (element) {
+                            element.click();
+                        }
+                    },
+                    args: [data.selector],
                 });
                 break;
         }
@@ -182,6 +192,12 @@ const executeSniffing = async (ws, data) => {
     const { selector, attribute, operation } = data;
 
     const result = await injectJS({ operation, selector, attribute, data });
+    // ignore sending results for these operations
+    ignoreResultOperations = ["scrollDown", "clickElement"];
+    if (ignoreResultOperations.includes(operation)) {
+        console.debug(`Operation "${operation}" does not require sending results back.`);
+        return;
+    }
 
     sendSniffingResult(
         ws,
