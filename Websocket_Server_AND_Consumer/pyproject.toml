@@ -1,0 +1,13 @@
+[project]
+name = "python-websockets-testing"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "black>=25.11.0",
+    "mypy>=1.18.2",
+    "pylance>=0.39.0",
+    "ruff>=0.14.5",
+    "websockets>=15.0.1",
+]
