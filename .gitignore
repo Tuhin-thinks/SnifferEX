@@ -162,4 +162,4 @@ cython_debug/
 
 # local folders ignored
 browser-extension-youtube-vids-scan/*
-.dump/*
+.dump/
