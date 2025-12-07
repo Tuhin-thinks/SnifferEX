@@ -19,14 +19,20 @@ Few example consumer scripts can be found in the [`example_consumers/`](./Websoc
 ```mermaid
 flowchart LR
 
-UserBrowser["User's Browser\n(with Extension)"]
-CloudRelay["Live Relay Service\n(WebSocket Gateway)"]
+UserBrowser["User's Browser
+(with Extension)"]
+CloudRelay["Live Relay Service
+(WebSocket Gateway)"]
 ConsumerApp["Control / Analysis App"]
 
-UserBrowser -- "Page HTML,\nUser events" --> CloudRelay
-CloudRelay -- "Cleaned data,\nInsights" --> ConsumerApp
-ConsumerApp -- "Commands\n(click, scroll, fill form)" --> CloudRelay
-CloudRelay -- "Actions to run\nin the browser" --> UserBrowser
+UserBrowser -- "Page HTML,
+User events" --> CloudRelay
+CloudRelay -- "Cleaned data,
+Insights" --> ConsumerApp
+ConsumerApp -- "Commands
+(click, scroll, fill form)" --> CloudRelay
+CloudRelay -- "Actions to run
+in the browser" --> UserBrowser
 
 ```
 
