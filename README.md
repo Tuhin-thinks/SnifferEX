@@ -1,66 +1,124 @@
-# Q1. What I want to create in this project?
+## What I want to create in this project?
 
-=> I want to create a CLI based application that will use the firefox browser almost like how an user uses the browser
-and scrap LinkedIn website for multiple purpose that I'll describe later on in the [docs](./docs).
+I wanted to create a generic setup that will use any browser
+and scrap ANY website by creating a live websocket connection between
+the browser and a backend server.
+Few example consumer scripts can be found in the [`example_consumers/`](./Websocket_Server_AND_Consumer/example_consumers/) folder.
+
+**Main purpose:**
+
+1. No sandbox environment needed (like playwright/selenium)
+2. Works with any website (SPA, dynamic content, etc)
+3. Real-time two-way communication (send commands back to browser)
+4. Can work alongside real user actions (hybrid human+automation)
+5. Use a LLM to spin up a consumer script withing few seconds, and start scraping live data with the same WS server.
+
+
+## Purpose Diagram:
 
 ```mermaid
-flowchart TD
-    1((("`fas:fa-brain Script / **ws listener**`"))) --"(1) PyAutogui"--> 2[Browser]
-    
-    subgraph BrowserScraping
-       2((fab:fa-firefox-browser Browser))-- Browser Extension -->3
-    end
-    
-    subgraph FlaskServer
-        1 <-- Calls to get back some stored data --> 3((Flask server))
-        3((fas:fa-server Flask server)) --Process data--> 4[fa:fa-database Mongoose DB]
-        4 --Get fresh data from DB --> 1
-    end
-    
-    subgraph WebSocket
-        3 --Notify WS about DB changes--> 6((("`**WS Server**`")))
-        6 --Transmit back required data to client--> 1
-    end
+flowchart LR
+
+UserBrowser["User's Browser\n(with Extension)"]
+CloudRelay["Live Relay Service\n(WebSocket Gateway)"]
+ConsumerApp["Control / Analysis App"]
+
+UserBrowser -- "Page HTML,\nUser events" --> CloudRelay
+CloudRelay -- "Cleaned data,\nInsights" --> ConsumerApp
+ConsumerApp -- "Commands\n(click, scroll, fill form)" --> CloudRelay
+CloudRelay -- "Actions to run\nin the browser" --> UserBrowser
+
 ```
 
-___
+## Technical Architecture Diagram:
 
-## Steps:
-1. User will run the script and it will start listening to the websocket server.
-2. The script will also start a flask server that will be used to process the data and store it in the database.
-3. The flask server is primarily responsible for getting browser data, from browser extension, and storing it in the database.
-4. Once, there's is any update in data, the websocket server will notify the script about the changes.
-5. The script will then fetch the data from the database and based on it, the rest of the process will continue.
+```mermaid
+flowchart TB
 
+subgraph BrowserSide["Browser Side"]
+    BrowserExt1["Browser Extension 1"]
+    BrowserExt2["Browser Extension 2"]
+end
 
-## Workflow of the application:
-1. User will start the websocket server.
-2. User will start the main script. That'll do the following things:
-   1. [Subscribe to the websocket server](#python-client-subscription-to-the-websocket-server).
-   2. [Start scraping using pyautogui.](#scraping-using-pyautogui)
+subgraph ConsumerSide["Consumer Clients"]
+    Consumer1["Consumer Client 1"]
+    Consumer2["Consumer Client 2"]
+end
+
+subgraph GatewayCluster["WebSocket Gateway Cluster"]
+    GW1["Gateway Instance 1
+    (WS Server + Connection Manager)"]
+    GW2["Gateway Instance 2
+    (WS Server + Connection Manager)"]
+end
+
+subgraph Backend["Backend Services"]
+    Bus["Message Bus
+(e.g. Redis / Kafka / NATS)"]
+    WorkerHTML["HTML Processing Worker(s)"]
+    WorkerCmd["Command Orchestrator
+(creates browser commands)"]
+end
+
+BrowserExt1 <-->|WebSocket| GW1
+BrowserExt2 <-->|WebSocket| GW2
+
+Consumer1 <-->|WebSocket| GW1
+Consumer2 <-->|WebSocket| GW2
+
+GW1 -->|"publish events
+(HTML, status)"| Bus
+GW2 -->|"publish events
+(HTML, status)"| Bus
+
+Bus --> WorkerHTML
+Bus --> WorkerCmd
+
+WorkerCmd -->|commands for
+specific sessions| Bus
+Bus --> GW1
+Bus --> GW2
+```
+
+---
+
+## ✔️ How it works — in 5 simple steps
+
+**1. Install & enable the browser extension**
+The extension watches the webpage you're on and securely connects to the live system.
+
+**2. Start your connected app (the controller)**
+This could be an automation tool, dashboard, or AI assistant that interacts with your webpage.
+
+**3. The system links both sides automatically**
+Your browser and controller pair together using a shared session — no setup required.
+
+**4. Your browser sends live page content**
+As you move, scroll, or browse, the extension shares updated webpage information with your controller.
+
+**5. Control flows both ways**
+Your controller can send actions like scroll, click, or fill form, and your browser executes them instantly.
 
 ## Python client subscription to the websocket server:
 
 ### What is the use ?
-=> The Python client will be responsible for sending scraping/running scripts commands to the browser via this websocket
-connection.
 
-#### workflow of the application:
+A compact, friendly comparison table, this might help you understand when to use this new approach over traditional scraping methods:
 
-**For example:**
-If the Python client wants to find all `href` on a page, based on certain selector. It'll need to do this:
-1. Use PyAutogui to load that page.
-2. Use PyAutoGui to trigger the extension to listen to websocket server for any incoming command.
-3. The websocket connection, that the Python client has been subscribed to, will send a command to the ws server,
-   that'll forward the message to the extension.
-4. After the extension receives the command, it'll execute the command, and send back the result to the ws server.
-5. The ws server will then forward the result to the Python client.
-6. All this time from (3), the Python client should be listening to the ws server for any incoming message.
-7. Once, the Python client receives the result, it'll process it, and continue with the rest of the process.
+---
 
-## Scraping using PyAutoGui:
-=> The main script will use PyAutoGui to control the browser. It'll do the following things:
-1. Load the page on the browser (of user's choice, where the extension is installed).
-2. Trigger the extension to listen to the websocket server for any incoming command.
-3. Click on button by using given img sources
-4. typewriting in the input text field.
+| Feature / Approach                    |     Scrapy    |   Playwright / Selenium   |    WebSocket-Based Two-Way Scraping    |
+| ------------------------------------- | :-----------: | :-----------------------: | :------------------------------------: |
+| Works without JS?                     |     ✅ Good    | ❌ Mostly needs JS runtime |        ❌ Depends on real browser       |
+| Handles dynamic SPA apps              |     ❌ Weak    |     ⚠️ Moderate/Costly    |               ✅ Excellent              |
+| Reacts to live page changes           |      ❌ No     |   ⚠️ Possible but heavy   |               ✅ Real-time              |
+| Long-running logged-in sessions       |   ⚠️ Painful  |         ⚠️ Fragile        |         ✅ Persistent + Natural         |
+| Works alongside real user actions     |      ❌ No     |       ❌ Not reliably      |             ✅ Built for it             |
+| Evades bot detection / fingerprinting |     ❌ Weak    |  ⚠️ Tuned setups required |        ✅ Uses real user browser        |
+| Automation + Human Hybrid             |      ❌ No     |          ⚠️ Hacky         |          🚀 Native capability          |
+| Overhead per action                   |      Low      |            High           |                Very low                |
+| Ideal Use Case                        | Bulk crawling | Full automation scripting | Live assist + interactive intelligence |
+
+## Example linkedin job details crawled:
+
+![Example LinkedIn Job Details Scraped](./docs/images/new-linkedin-scraped-results-job-details.png)
