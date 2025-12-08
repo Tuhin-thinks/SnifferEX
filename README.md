@@ -1,3 +1,5 @@
+![](./docs/images/SnifferEx.png)
+
 ## What I want to create in this project?
 
 I wanted to create a generic setup that will use any browser
