@@ -17,7 +17,7 @@ async def consumer():
         hello = {"type": "hello", "role": "consumer", "session": SESSION_ID}
         await ws.send(json.dumps(hello))
 
-        unique_likers = set()
+        likers_data: Mapping[str, str] = {}
         command_queue: Queue[Mapping[str, str | list[str] | float] | None] = Queue()
 
         scrape_likers_command = {
@@ -31,6 +31,7 @@ async def consumer():
             "command": "sniff",
             "operation": "scrollDown",
             "selector": 'div[role="dialog"]',
+            "selectIndex": 1,  # select index 0, when viewing some post from feed. 1: when viewing from home page.
             "attribute": "",
             "amount": 1000,
         }
@@ -40,27 +41,26 @@ async def consumer():
             async for msg in ws:
                 # print("[Consumer] Received HTML:", msg)
                 result = json.loads(msg)
-                pprint.pprint(result)
                 if result.get("messageType") == "sniffingResult" and (
                     data := result.get("data")
                 ):
                     likers = data.get("innerText", [])
                     hrefs = data.get("href", [])
                     for liker, href in zip(likers, hrefs):
-                        if liker not in unique_likers:
-                            unique_likers.add(liker)
-                            print(f"[Consumer] New liker found: {liker} - {href}")
+                        if liker not in likers_data:
+                            likers_data[liker] = href
+                            # print(f"[Consumer] New liker found: {liker} - {href}")
 
-                    if prev_likers_counts == len(unique_likers):
+                    if prev_likers_counts == len(likers_data):
                         print(
                             "[Consumer] No new likers found in this iteration. Stopping further scrolls."
                         )
                         await ws.close()
                         await command_queue.put(None)  # signal to stop sending commands
                         return
-                    prev_likers_counts = len(unique_likers)
+                    prev_likers_counts = len(likers_data)
                     print(
-                        f"[Consumer] Total unique likers collected: {len(unique_likers)}"
+                        f"[Consumer] Total unique likers collected: {len(likers_data)}"
                     )
                     # add scroll down command to queue, and scrape likers again; if no new likers found after several iterations, we can stop
                     await command_queue.put(scroll_down_command)
@@ -85,12 +85,12 @@ async def consumer():
 
         await asyncio.gather(listen(), send_commands())
 
-        return unique_likers
+        return likers_data
 
 
 try:
-    unique_likers = asyncio.run(consumer())
-    print(f"Total unique likers collected: {len(unique_likers)}")
-    print(unique_likers)
+    likers_data = asyncio.run(consumer())
+    print(f"Total unique likers collected: {len(likers_data)}")
+    pprint.pprint(likers_data)
 except KeyboardInterrupt:
     print("Consumer stopped by user.")

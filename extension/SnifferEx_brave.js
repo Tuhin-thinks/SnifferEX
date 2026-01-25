@@ -81,15 +81,18 @@ const sendSniffingResult = (ws, result) => {
 const injectJS = async ({ operation, selector, attribute, data }) => {
     // Define the functions that will be injected
     const injectedFunctions = {
-        getAll: (attribute, selector) => {
-            const elements = document.querySelectorAll(selector);
+        getAll: (attribute, selector, selectIndex) => {
+            let elements = document.querySelectorAll(selector);
+            if (selectIndex !== null) {
+                elements = [elements[selectIndex]].filter(Boolean);
+            }
             let result = {};
             // check if attribute is a list of attributes (else make it a list with single attribute)
             const attributes_list = Array.isArray(attribute)
                 ? attribute
                 : [attribute];
 
-            elements.forEach((element) => {
+            elements.forEach((element, index) => {
                 attributes_list.forEach((attr) => {
                     const value =
                         element.getAttribute(attr) ?? element[attr] ?? null;
@@ -104,20 +107,25 @@ const injectJS = async ({ operation, selector, attribute, data }) => {
             return result;
         },
 
-        getElemAttribute: (attribute, selector) => {
-            const element = document.querySelector(selector);
-            if (element && element[attribute]) {
-                return element[attribute];
+        getElemAttribute: (attribute, selector, selectIndex) => {
+            let elements = document.querySelectorAll(selector);
+            if (selectIndex !== null) {
+                elements = [elements[selectIndex]].filter(Boolean);
+                return elements.length > 0
+                    ? (elements[0].getAttribute(attribute) ??
+                          elements[0][attribute] ??
+                          null)
+                    : null;
             }
             return null;
         },
 
-        innerHTML: (selector, attribute) => {
-            const element = document.querySelector(selector);
-            if (element && element[attribute]) {
-                return element[attribute];
+        innerHTML: (selector, attribute, selectIndex) => {
+            let elements = document.querySelectorAll(selector);
+            if (selectIndex !== null) {
+                elements = [elements[selectIndex]].filter(Boolean);
             }
-            return null;
+            return elements.length > 0 ? elements[0].innerHTML : null;
         },
     };
 
@@ -132,7 +140,7 @@ const injectJS = async ({ operation, selector, attribute, data }) => {
                 resultArray = await chrome.scripting.executeScript({
                     target: { tabId: tabId },
                     func: injectedFunctions.getAll,
-                    args: [attribute, selector],
+                    args: [attribute, selector, data.selectIndex || null],
                 });
                 break;
 
@@ -140,7 +148,7 @@ const injectJS = async ({ operation, selector, attribute, data }) => {
                 resultArray = await chrome.scripting.executeScript({
                     target: { tabId: tabId },
                     func: injectedFunctions.getElemAttribute,
-                    args: [attribute, selector],
+                    args: [attribute, selector, data.selectIndex || null],
                 });
                 break;
 
@@ -148,7 +156,7 @@ const injectJS = async ({ operation, selector, attribute, data }) => {
                 resultArray = await chrome.scripting.executeScript({
                     target: { tabId: tabId },
                     func: injectedFunctions.innerHTML,
-                    args: [selector, attribute],
+                    args: [selector, attribute, data.selectIndex || null],
                 });
                 break;
 
@@ -156,7 +164,7 @@ const injectJS = async ({ operation, selector, attribute, data }) => {
                 let scrollingElement = null;
                 await chrome.scripting.executeScript({
                     target: { tabId: tabId },
-                    func: (selector, scrollAmt) => {
+                    func: (selector, scrollAmt, selectIndex) => {
                         const findScrollableChild = (element) => {
                             const children = element.querySelectorAll("*");
 
@@ -183,7 +191,15 @@ const injectJS = async ({ operation, selector, attribute, data }) => {
                         };
 
                         if (selector) {
-                            const selectedEl = document.querySelector(selector);
+                            let selectedEl =
+                                document.querySelectorAll(selector);
+                            if (selectIndex !== null) {
+                                selectedEl = [selectedEl[selectIndex]].filter(
+                                    Boolean,
+                                )[0];
+                            } else {
+                                selectedEl = selectedEl[0];
+                            }
                             console.log(
                                 "Selected element for scrolling: ",
                                 selectedEl,
@@ -213,7 +229,11 @@ const injectJS = async ({ operation, selector, attribute, data }) => {
                             return null;
                         }
                     },
-                    args: [data.selector, data.amount],
+                    args: [
+                        data.selector,
+                        data.amount,
+                        data?.selectIndex || null,
+                    ],
                 });
 
                 break;
@@ -227,7 +247,7 @@ const injectJS = async ({ operation, selector, attribute, data }) => {
                             element.click();
                         }
                     },
-                    args: [data.selector],
+                    args: [data.selector, data.selectIndex || null],
                 });
                 break;
         }
@@ -238,7 +258,9 @@ const injectJS = async ({ operation, selector, attribute, data }) => {
             return null;
         }
     } catch (error) {
-        console.error("Error executing script:", error);
+        // print complete traceback
+        console.error("Error injecting script: ", error);
+        console.error(error.stack);
         return null;
     }
 };
