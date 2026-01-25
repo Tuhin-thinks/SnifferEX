@@ -153,14 +153,69 @@ const injectJS = async ({ operation, selector, attribute, data }) => {
                 break;
 
             case "scrollDown":
+                let scrollingElement = null;
                 await chrome.scripting.executeScript({
-                    target: { tabId },
-                    func: (amount) => {
-                        const el = document.scrollingElement || document.documentElement || document.body;
-                        el.scrollBy(0, amount);
+                    target: { tabId: tabId },
+                    func: (selector, scrollAmt) => {
+                        const findScrollableChild = (element) => {
+                            const children = element.querySelectorAll("*");
+
+                            for (let child of children) {
+                                const overflowY =
+                                    window.getComputedStyle(child).overflowY;
+                                const isScrollable =
+                                    overflowY === "scroll" ||
+                                    overflowY === "auto";
+
+                                if (
+                                    isScrollable &&
+                                    child.scrollHeight > child.clientHeight
+                                ) {
+                                    console.debug(
+                                        "Found scrollable child: ",
+                                        child,
+                                    );
+                                    return child;
+                                }
+                            }
+
+                            return null;
+                        };
+
+                        if (selector) {
+                            const selectedEl = document.querySelector(selector);
+                            console.log(
+                                "Selected element for scrolling: ",
+                                selectedEl,
+                            );
+                            scrollingElement = findScrollableChild(selectedEl);
+                            if (scrollingElement) {
+                                console.debug(
+                                    "Using scrollable child element: ",
+                                    scrollingElement,
+                                );
+                                scrollingElement.scrollBy(
+                                    0,
+                                    scrollAmt || scrollingElement.clientHeight,
+                                );
+                                return scrollingElement;
+                            } else {
+                                console.debug(
+                                    "No scrollable child found, using selected element.",
+                                );
+                                selectedEl.scrollBy(
+                                    0,
+                                    scrollAmt || selectedEl.clientHeight,
+                                );
+                                return selectedEl;
+                            }
+                        } else {
+                            return null;
+                        }
                     },
-                    args: [data.amount ?? 300],
+                    args: [data.selector, data.amount],
                 });
+
                 break;
 
             case "clickElement":
