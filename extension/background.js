@@ -1,9 +1,13 @@
 // Manages one WebSocket connection per started tab in MV3 background context.
 const WEBSOCKET_URL = "ws://localhost:8765";
 const SESSION_ID = "secret-session-id";
+const HEARTBEAT_INTERVAL_MS = 20000;
 
 /** Tracks tabId -> WebSocket for active sniffing sessions. */
 const tabSockets = new Map();
+
+/** Tracks tabId -> heartbeat interval id for active sockets. */
+const tabHeartbeats = new Map();
 
 /** Resolves the active tab id for the current browser window. */
 const getActiveTabId = async () => {
@@ -25,6 +29,35 @@ const sendSniffingResult = (socket, result) => {
         messageType: "sniffingResult",
         ...result,
     });
+};
+
+/** Clears heartbeat timer for one tab when present. */
+const clearHeartbeatForTab = (tabId) => {
+    const heartbeatId = tabHeartbeats.get(tabId);
+    if (heartbeatId) {
+        clearInterval(heartbeatId);
+        tabHeartbeats.delete(tabId);
+    }
+};
+
+/** Starts heartbeat messages so MV3 worker does not suspend active sockets. */
+const startHeartbeatForTab = (tabId, socket) => {
+    clearHeartbeatForTab(tabId);
+
+    const heartbeatId = setInterval(() => {
+        if (socket.readyState !== WebSocket.OPEN) {
+            clearHeartbeatForTab(tabId);
+            return;
+        }
+
+        sendSocketMessage(socket, {
+            messageType: "heartbeat",
+            tabId,
+            timestamp: Date.now(),
+        });
+    }, HEARTBEAT_INTERVAL_MS);
+
+    tabHeartbeats.set(tabId, heartbeatId);
 };
 
 /** Injects one operation into a specific tab and returns extraction output. */
@@ -210,12 +243,14 @@ const executeSniffing = async (tabId, socket, commandData) => {
 };
 
 /** Closes and removes the socket for a tab when it exists. */
-const stopWebSocketForTab = (tabId) => {
+const stopWebSocketForTab = (tabId, reason = "manual-stop") => {
     const socket = tabSockets.get(tabId);
     if (!socket) {
         return false;
     }
 
+    clearHeartbeatForTab(tabId);
+    console.debug(`SnifferEx stopping WebSocket for tab ${tabId} (${reason})`);
     socket.close();
     tabSockets.delete(tabId);
     return true;
@@ -225,20 +260,30 @@ const stopWebSocketForTab = (tabId) => {
 const attachSocketHandlers = (tabId, socket) => {
     socket.onopen = () => {
         console.debug(`SnifferEx WebSocket opened for tab ${tabId}`);
-        sendSocketMessage(socket, 
-            { role: "browser", session: SESSION_ID, tabId }
-        );
+        sendSocketMessage(socket, {
+            role: "browser",
+            session: SESSION_ID,
+            tabId,
+        });
+        startHeartbeatForTab(tabId, socket);
     };
 
     socket.onmessage = async ({ data }) => {
         try {
             const parsedData = JSON.parse(data);
+            if (
+                parsedData.messageType === "heartbeat" ||
+                parsedData.command === "heartbeat"
+            ) {
+                return;
+            }
+
             if (parsedData.command === "sniff") {
                 await executeSniffing(tabId, socket, parsedData);
                 return;
             }
             if (parsedData.command === "stop") {
-                stopWebSocketForTab(tabId);
+                stopWebSocketForTab(tabId, "remote-stop");
                 return;
             }
             console.warn(
@@ -254,11 +299,14 @@ const attachSocketHandlers = (tabId, socket) => {
         console.error(`SnifferEx WebSocket error for tab ${tabId}:`, event);
     };
 
-    socket.onclose = () => {
+    socket.onclose = (event) => {
+        clearHeartbeatForTab(tabId);
         if (tabSockets.get(tabId) === socket) {
             tabSockets.delete(tabId);
         }
-        console.debug(`SnifferEx WebSocket closed for tab ${tabId}`);
+        console.debug(
+            `SnifferEx WebSocket closed for tab ${tabId} (code=${event.code}, reason=${event.reason || "none"}, clean=${event.wasClean})`,
+        );
     };
 };
 
@@ -285,16 +333,30 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 /** Handles popup and internal messages that control websocket lifecycle. */
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    let hasResponded = false;
+    const reply = (payload) => {
+        if (hasResponded) {
+            return;
+        }
+        hasResponded = true;
+        sendResponse(payload);
+    };
+
     (async () => {
+        if (!message || typeof message.type !== "string") {
+            reply({ ok: false, error: "Invalid message payload" });
+            return;
+        }
+
         if (message.type === "start-ws") {
             const tabId = message.tabId ?? (await getActiveTabId());
             if (tabId === null) {
-                sendResponse({ ok: false, error: "No active tab found" });
+                reply({ ok: false, error: "No active tab found" });
                 return;
             }
 
             const result = startWebSocketForTab(tabId);
-            sendResponse({ ok: true, tabId, ...result });
+            reply({ ok: true, tabId, ...result });
             return;
         }
 
@@ -302,18 +364,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             const tabId =
                 message.tabId ?? sender.tab?.id ?? (await getActiveTabId());
             if (tabId === null) {
-                sendResponse({ ok: false, error: "No active tab found" });
+                reply({ ok: false, error: "No active tab found" });
                 return;
             }
             const stopped = stopWebSocketForTab(tabId);
-            sendResponse({ ok: stopped, tabId });
+            reply({ ok: stopped, tabId });
             return;
         }
 
         if (message.type === "ws-status") {
             const tabId = message.tabId ?? (await getActiveTabId());
             if (tabId === null) {
-                sendResponse({
+                reply({
                     ok: false,
                     connected: false,
                     state: "missing-tab",
@@ -323,16 +385,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
             const socket = tabSockets.get(tabId);
             const state = socket ? socket.readyState : WebSocket.CLOSED;
-            sendResponse({
+            reply({
                 ok: true,
                 tabId,
                 connected: state === WebSocket.OPEN,
                 state,
             });
+            return;
         }
+
+        reply({ ok: false, error: `Unsupported message type: ${message.type}` });
     })().catch((error) => {
         console.error("SnifferEx runtime message handler failed:", error);
-        sendResponse({ ok: false, error: String(error) });
+        reply({ ok: false, error: String(error) });
     });
 
     return true;
@@ -351,12 +416,12 @@ chrome.commands.onCommand.addListener(async (command) => {
     if (command === "stop-listening") {
         const tabId = await getActiveTabId();
         if (tabId !== null) {
-            stopWebSocketForTab(tabId);
+            stopWebSocketForTab(tabId, "keyboard-stop");
         }
     }
 });
 
 /** Ensures only the closed tab's socket is shut down on tab removal. */
 chrome.tabs.onRemoved.addListener((tabId) => {
-    stopWebSocketForTab(tabId);
+    stopWebSocketForTab(tabId, "tab-closed");
 });
