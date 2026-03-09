@@ -1,7 +1,8 @@
 import asyncio
+import time
 import uuid
 
-from websockets import ServerConnection
+from websockets.asyncio.server import ServerConnection
 
 
 class Connection:
@@ -10,6 +11,8 @@ class Connection:
         self.websocket: ServerConnection = websocket
         self.role: None | str = None  # "browser" or "consumer"
         self.session: None | str = None  # shared session id
+        self.tab_id: None | str = None  # browser tab identifier
+        self.last_seen_at: float = time.time()  # updated from heartbeat/traffic
         self.outgoing: asyncio.Queue[str | bytes] = asyncio.Queue(maxsize=100)
 
 
