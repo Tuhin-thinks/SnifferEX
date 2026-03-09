@@ -1,19 +1,21 @@
-// Content script for SnifferEx
-console.log('SnifferEx content script loaded on:', window.location.href);
+// Handles page-side extraction requests forwarded from extension runtime.
+console.log("SnifferEx content script loaded on:", window.location.href);
 
 // Listen for messages from background script or popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    console.log('Content script received message:', message);
+    console.log("Content script received message:", message);
 
-    if (message.action === 'start-listening') {
-        // Handle start listening command
-        console.log('Starting WebSocket listener from content script');
+    if (message.action === "start-listening") {
+        console.log("Start listening signal received in content script");
         sendResponse({ success: true });
     }
 
-    if (message.action === 'extract-data') {
-        // Handle data extraction
-        const result = extractData(message.selector, message.attribute, message.operation);
+    if (message.action === "extract-data") {
+        const result = extractData(
+            message.selector,
+            message.attribute,
+            message.operation,
+        );
         sendResponse({ data: result });
     }
 
@@ -24,7 +26,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 function extractData(selector, attribute, operation) {
     try {
         switch (operation) {
-            case 'getAll':
+            case "getAll": {
                 const elements = document.querySelectorAll(selector);
                 const results = [];
                 elements.forEach((element) => {
@@ -33,30 +35,37 @@ function extractData(selector, attribute, operation) {
                     }
                 });
                 return results;
+            }
 
-            case 'getElemAttribute':
+            case "getElemAttribute": {
                 const element = document.querySelector(selector);
-                return element && element[attribute] ? element[attribute] : null;
+                return element && element[attribute]
+                    ? element[attribute]
+                    : null;
+            }
 
-            case 'innerHTML':
+            case "innerHTML": {
                 const elem = document.querySelector(selector);
                 return elem && elem[attribute] ? elem[attribute] : null;
+            }
 
             default:
                 return null;
         }
     } catch (error) {
-        console.error('Error extracting data:', error);
+        console.error("Error extracting data:", error);
         return null;
     }
 }
 
 // Optional: Inject indicators or UI elements
 function injectSnifferIndicator() {
-    if (document.getElementById('sniffer-indicator')) return;
+    if (document.getElementById("sniffer-indicator")) {
+        return;
+    }
 
-    const indicator = document.createElement('div');
-    indicator.id = 'sniffer-indicator';
+    const indicator = document.createElement("div");
+    indicator.id = "sniffer-indicator";
     indicator.style.cssText = `
         position: fixed;
         top: 10px;
@@ -69,7 +78,7 @@ function injectSnifferIndicator() {
         z-index: 9999;
         display: none;
     `;
-    indicator.textContent = 'SnifferEx Active';
+    indicator.textContent = "SnifferEx Active";
     document.body.appendChild(indicator);
 }
 

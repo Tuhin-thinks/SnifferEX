@@ -12,8 +12,9 @@ async function buildForBrave() {
         // Copy files for Brave build
         const filesToCopy = [
             { src: "manifest.json", dest: "manifest.json" },
-            { src: "SnifferEx_brave.js", dest: "SnifferEx.js" },
+            { src: "SnifferEx_brave.js", dest: "SnifferEx_brave.js" },
             { src: "index.html", dest: "index.html" },
+            { src: "popup.js", dest: "popup.js" },
             { src: "background.js", dest: "background.js" },
             { src: "content.js", dest: "content.js" },
             { src: "style.css", dest: "style.css" },
